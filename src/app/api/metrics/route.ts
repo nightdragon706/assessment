@@ -1,60 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
-// GET /api/metrics - Get all metrics
+// GET /api/metrics - Get dashboard statistics
 export async function GET() {
   try {
-    const metrics = await prisma.metric.findMany({
-      include: {
-        app: true,
-      },
-      orderBy: {
-        date: 'desc',
-      },
+    // Calculate dashboard stats from the apps table
+    const result = await prisma.$queryRawUnsafe(`
+      SELECT 
+        COUNT(DISTINCT appName) as totalApps,
+        SUM(inAppRevenue + adsRevenue) as totalRevenue,
+        SUM(installs) as totalInstalls,
+        SUM(uaCost) as totalUaCost
+      FROM apps
+    `) as any[]
+
+    const stats = result[0]
+
+    return NextResponse.json({
+      totalApps: Number(stats.totalApps) || 0,
+      totalRevenue: Number(stats.totalRevenue) || 0,
+      totalInstalls: Number(stats.totalInstalls) || 0,
+      totalUaCost: Number(stats.totalUaCost) || 0
     })
-    
-    return NextResponse.json(metrics)
   } catch (error) {
     console.error('Error fetching metrics:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch metrics' },
-      { status: 500 }
+      {
+        totalApps: 0,
+        totalRevenue: 0,
+        totalInstalls: 0,
+        totalUaCost: 0
+      },
+      { status: 200 } // Return default values instead of error
     )
   }
 }
 
-// POST /api/metrics - Create a new metric
+// POST /api/metrics - This endpoint is no longer needed since metrics are part of the app data
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-    const { appId, date, metricType, value } = body
-
-    // Validate required fields
-    if (!appId || !date || !metricType || value === undefined) {
-      return NextResponse.json(
-        { error: 'App ID, date, metric type, and value are required' },
-        { status: 400 }
-      )
-    }
-
-    const metric = await prisma.metric.create({
-      data: {
-        appId,
-        date: new Date(date),
-        metricType,
-        value,
-      },
-      include: {
-        app: true,
-      },
-    })
-
-    return NextResponse.json(metric, { status: 201 })
-  } catch (error) {
-    console.error('Error creating metric:', error)
-    return NextResponse.json(
-      { error: 'Failed to create metric' },
-      { status: 500 }
-    )
-  }
+  return NextResponse.json(
+    { error: 'Metrics are now part of the app data. Use the apps API instead.' },
+    { status: 400 }
+  )
 }

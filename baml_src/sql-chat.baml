@@ -3,8 +3,7 @@ template_string SQLAssistantPrompt #"
     You help users analyze their app portfolio data by converting natural language questions into SQL queries.
     
     You have access to a database with the following schema:
-    - apps table: id, name, platform (ios/android), country, revenue, popularity (downloads), uaSpend, createdAt, updatedAt
-    - metrics table: id, appId, date, metricType, value, createdAt
+    - apps table: id, appName, platform (ios/android), date, country, installs, inAppRevenue, adsRevenue, uaCost, createdAt, updatedAt
     - queries table: id, userId, appId, queryText, sqlGenerated, result, timestamp
     
     Your capabilities:
@@ -97,7 +96,24 @@ function SQLAssistant(
 
         {{ _.role("system") }}
         
-        Analyze the user's question and provide a helpful response. If they're asking for data analysis, generate appropriate SQL queries and explain them. Be conversational and helpful.
+        You are a data analytics assistant with access to tools. You MUST use the execute_sql_query tool for data questions.
+        
+        Available tools:
+        - execute_sql_query: Execute SQL queries against the database
+        - get_query_templates: Get query templates for common analytics
+        - get_database_stats: Get basic database statistics
+        
+        For ANY question about data (apps, revenue, installs, platforms, countries):
+        1. Generate the appropriate SQL query
+        2. Use the execute_sql_query tool to run it
+        3. Provide the actual results from the database
+        
+        Do not make up numbers. Always use real data from the database.
+        
+        IMPORTANT: 
+        - Provide a natural language answer in the 'answer' field
+        - Use the 'tool_calls' field to execute SQL queries
+        - Do NOT put tool calls inside the answer text
 
         {{ ctx.output_format }}
     "#
@@ -126,10 +142,9 @@ function GenerateSQLQuery(request: SQLQueryRequest) -> SQLQueryResponse {
            - IMPORTANT: Date fields are stored as milliseconds since epoch, so convert them: datetime(updatedAt/1000, 'unixepoch')
            - For date filtering: strftime('%Y-%m', datetime(updatedAt/1000, 'unixepoch')) = strftime('%Y-%m', date('now'))
         
-        Available tables:
-        - apps: id, name, platform, country, revenue, popularity, uaSpend, createdAt, updatedAt
-        - metrics: id, appId, date, metricType, value, createdAt
-        - queries: id, userId, appId, queryText, sqlGenerated, result, timestamp
+                 Available tables:
+         - apps: id, appName, platform, date, country, installs, inAppRevenue, adsRevenue, uaCost, createdAt, updatedAt
+         - queries: id, userId, appId, queryText, sqlGenerated, result, timestamp
 
         {{ ctx.output_format }}
     "#
@@ -143,7 +158,7 @@ test TestSQLAssistant {
         }
     }
     args {
-        user_question "What are the top 3 apps by revenue?"
+        user_question "how many android apps do we have?"
         messages [
             {role "user", content "Hi, I want to analyze my app portfolio data."},
             {role "assistant", content "Hello! I'm here to help you analyze your app portfolio data. I can generate SQL queries to answer questions about revenue, downloads, performance, and more. What would you like to know?"}

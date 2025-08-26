@@ -6,122 +6,195 @@ async function main() {
     console.log('Starting database seed...')
 
     // Clear existing data
-    await prisma.metric.deleteMany()
     await prisma.query.deleteMany()
     await prisma.app.deleteMany()
 
     console.log('Cleared existing data')
 
-    // Create sample apps with proper date values
+    // Create sample apps with the exact schema requirements
     const apps = await Promise.all([
+        // TikTok - Multiple entries for different dates/countries
         prisma.app.create({
             data: {
-                name: 'TikTok',
+                appName: 'TikTok',
                 platform: 'ios',
+                date: new Date('2025-01-15'),
                 country: 'United States',
-                revenue: 1500000,
-                popularity: 50000000,
-                uaSpend: 250000,
-                createdAt: new Date('2024-01-15'),
-                updatedAt: new Date('2025-08-20'), // Recent update
+                installs: 5000000,
+                inAppRevenue: 1500000,
+                adsRevenue: 800000,
+                uaCost: 250000,
             },
         }),
         prisma.app.create({
             data: {
-                name: 'Instagram',
+                appName: 'TikTok',
                 platform: 'android',
+                date: new Date('2025-01-15'),
                 country: 'United States',
-                revenue: 1200000,
-                popularity: 45000000,
-                uaSpend: 200000,
-                createdAt: new Date('2023-06-10'),
-                updatedAt: new Date('2025-08-15'), // Recent update
+                installs: 8000000,
+                inAppRevenue: 1200000,
+                adsRevenue: 600000,
+                uaCost: 300000,
             },
         }),
         prisma.app.create({
             data: {
-                name: 'WhatsApp',
+                appName: 'TikTok',
                 platform: 'ios',
+                date: new Date('2025-01-15'),
                 country: 'India',
-                revenue: 800000,
-                popularity: 35000000,
-                uaSpend: 150000,
-                createdAt: new Date('2022-11-05'),
-                updatedAt: new Date('2025-07-25'), // Last month update
+                installs: 3000000,
+                inAppRevenue: 400000,
+                adsRevenue: 200000,
+                uaCost: 150000,
             },
         }),
+
+        // Instagram
         prisma.app.create({
             data: {
-                name: 'Spotify',
-                platform: 'android',
-                country: 'Sweden',
-                revenue: 900000,
-                popularity: 30000000,
-                uaSpend: 180000,
-                createdAt: new Date('2023-03-20'),
-                updatedAt: new Date('2025-07-30'), // Last month update
-            },
-        }),
-        prisma.app.create({
-            data: {
-                name: 'Netflix',
+                appName: 'Instagram',
                 platform: 'ios',
+                date: new Date('2025-01-15'),
                 country: 'United States',
-                revenue: 2000000,
-                popularity: 25000000,
-                uaSpend: 300000,
-                createdAt: new Date('2022-08-12'),
-                updatedAt: new Date('2025-08-10'), // Recent update
+                installs: 3000000,
+                inAppRevenue: 800000,
+                adsRevenue: 1200000,
+                uaCost: 200000,
+            },
+        }),
+        prisma.app.create({
+            data: {
+                appName: 'Instagram',
+                platform: 'android',
+                date: new Date('2025-01-15'),
+                country: 'United States',
+                installs: 4500000,
+                inAppRevenue: 600000,
+                adsRevenue: 900000,
+                uaCost: 250000,
+            },
+        }),
+
+        // WhatsApp
+        prisma.app.create({
+            data: {
+                appName: 'WhatsApp',
+                platform: 'ios',
+                date: new Date('2025-01-15'),
+                country: 'India',
+                installs: 2000000,
+                inAppRevenue: 200000,
+                adsRevenue: 0,
+                uaCost: 100000,
+            },
+        }),
+        prisma.app.create({
+            data: {
+                appName: 'WhatsApp',
+                platform: 'android',
+                date: new Date('2025-01-15'),
+                country: 'India',
+                installs: 8000000,
+                inAppRevenue: 300000,
+                adsRevenue: 0,
+                uaCost: 120000,
+            },
+        }),
+
+        // Spotify
+        prisma.app.create({
+            data: {
+                appName: 'Spotify',
+                platform: 'ios',
+                date: new Date('2025-01-15'),
+                country: 'Sweden',
+                installs: 1500000,
+                inAppRevenue: 900000,
+                adsRevenue: 200000,
+                uaCost: 180000,
+            },
+        }),
+        prisma.app.create({
+            data: {
+                appName: 'Spotify',
+                platform: 'android',
+                date: new Date('2025-01-15'),
+                country: 'Sweden',
+                installs: 2000000,
+                inAppRevenue: 700000,
+                adsRevenue: 150000,
+                uaCost: 200000,
+            },
+        }),
+
+        // Netflix
+        prisma.app.create({
+            data: {
+                appName: 'Netflix',
+                platform: 'ios',
+                date: new Date('2025-01-15'),
+                country: 'United States',
+                installs: 1000000,
+                inAppRevenue: 2000000,
+                adsRevenue: 0,
+                uaCost: 300000,
+            },
+        }),
+        prisma.app.create({
+            data: {
+                appName: 'Netflix',
+                platform: 'android',
+                date: new Date('2025-01-15'),
+                country: 'United States',
+                installs: 1200000,
+                inAppRevenue: 1800000,
+                adsRevenue: 0,
+                uaCost: 280000,
+            },
+        }),
+
+        // Add some historical data for trend analysis
+        prisma.app.create({
+            data: {
+                appName: 'TikTok',
+                platform: 'ios',
+                date: new Date('2024-12-15'),
+                country: 'United States',
+                installs: 4500000,
+                inAppRevenue: 1300000,
+                adsRevenue: 700000,
+                uaCost: 220000,
+            },
+        }),
+        prisma.app.create({
+            data: {
+                appName: 'Instagram',
+                platform: 'ios',
+                date: new Date('2024-12-15'),
+                country: 'United States',
+                installs: 2800000,
+                inAppRevenue: 750000,
+                adsRevenue: 1100000,
+                uaCost: 180000,
+            },
+        }),
+        prisma.app.create({
+            data: {
+                appName: 'Netflix',
+                platform: 'ios',
+                date: new Date('2024-12-15'),
+                country: 'United States',
+                installs: 900000,
+                inAppRevenue: 1900000,
+                adsRevenue: 0,
+                uaCost: 250000,
             },
         }),
     ])
 
     console.log('Created apps:', apps.length)
-
-    // Create sample metrics with proper dates
-    for (const app of apps) {
-        await prisma.metric.createMany({
-            data: [
-                {
-                    appId: app.id,
-                    date: new Date('2024-01-01'),
-                    metricType: 'revenue',
-                    value: app.revenue * 0.8,
-                },
-                {
-                    appId: app.id,
-                    date: new Date('2024-01-01'),
-                    metricType: 'downloads',
-                    value: app.popularity * 0.7,
-                },
-                {
-                    appId: app.id,
-                    date: new Date('2024-02-01'),
-                    metricType: 'revenue',
-                    value: app.revenue * 0.9,
-                },
-                {
-                    appId: app.id,
-                    date: new Date('2024-02-01'),
-                    metricType: 'downloads',
-                    value: app.popularity * 0.8,
-                },
-                {
-                    appId: app.id,
-                    date: new Date('2025-07-01'),
-                    metricType: 'revenue',
-                    value: app.revenue * 0.95,
-                },
-                {
-                    appId: app.id,
-                    date: new Date('2025-08-01'),
-                    metricType: 'revenue',
-                    value: app.revenue,
-                },
-            ],
-        })
-    }
-
     console.log('Database seeded successfully!')
 }
 

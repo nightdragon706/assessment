@@ -1,121 +1,109 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { App } from '@/types'
-import { appsApi } from '@/lib/api'
-import AppList from '@/components/AppList'
-import CreateAppForm from '@/components/CreateAppForm'
-import DashboardStats from '@/components/DashboardStats'
-import QueryBuilder from '@/components/QueryBuilder'
+import { useState } from 'react'
 import Chat from '@/components/Chat'
 import QueryResults from '@/components/QueryResults'
+import DashboardStats from '@/components/DashboardStats'
 
 export default function Home() {
-  const [apps, setApps] = useState<App[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showCreateForm, setShowCreateForm] = useState(false)
-  const [chatQueryResult, setChatQueryResult] = useState<any>(null)
-  const [chatSqlQuery, setChatSqlQuery] = useState<string>('')
+    const [queryResult, setQueryResult] = useState<any>(null)
 
-  useEffect(() => {
-    loadApps()
-  }, [])
-
-  const loadApps = async () => {
-    try {
-      setLoading(true)
-      const data = await appsApi.getAll()
-      setApps(data)
-    } catch (error) {
-      console.error('Error loading apps:', error)
-    } finally {
-      setLoading(false)
+    const handleQueryResult = (result: any) => {
+        setQueryResult(result)
     }
-  }
 
-  const handleCreateApp = async (appData: any) => {
-    try {
-      await appsApi.create(appData)
-      await loadApps()
-      setShowCreateForm(false)
-    } catch (error) {
-      console.error('Error creating app:', error)
-    }
-  }
+    return (
+        <div className="min-h-screen bg-gray-50">
+            <div className="container mx-auto px-4 py-8">
+                <div className="text-center mb-8">
+                    <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                        App Portfolio Analytics
+                    </h1>
+                    <p className="text-lg text-gray-600">
+                        Your AI-powered data analytics assistant
+                    </p>
+                </div>
 
-  const handleDeleteApp = async (id: string) => {
-    try {
-      await appsApi.delete(id)
-      await loadApps()
-    } catch (error) {
-      console.error('Error deleting app:', error)
-    }
-  }
+                {/* Dashboard Stats */}
+                <div className="mb-8">
+                    <DashboardStats />
+                </div>
 
-  const handleChatQueryResult = (result: any) => {
-    setChatQueryResult(result)
-    if (result?.sqlQuery) {
-      setChatSqlQuery(result.sqlQuery)
-    }
-  }
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Chat Interface */}
+                    <div className="bg-white rounded-lg shadow-lg">
+                        <div className="p-6 border-b border-gray-200">
+                            <h2 className="text-xl font-semibold text-gray-900">
+                                Analytics Chatbot
+                            </h2>
+                            <p className="text-sm text-gray-600 mt-1">
+                                Ask questions about your app portfolio data
+                            </p>
+                        </div>
+                        <div className="h-96">
+                            <Chat onQueryResult={handleQueryResult} />
+                        </div>
+                    </div>
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
-            App Portfolio Analytics
-          </h1>
-          <p className="mt-2 text-gray-600">
-            Manage and analyze your app portfolio data
-          </p>
+                    {/* Results Display */}
+                    <div className="bg-white rounded-lg shadow-lg">
+                        <div className="p-6 border-b border-gray-200">
+                            <h2 className="text-xl font-semibold text-gray-900">
+                                Query Results
+                            </h2>
+                            <p className="text-sm text-gray-600 mt-1">
+                                View and analyze your data
+                            </p>
+                        </div>
+                        <div className="p-6">
+                            {queryResult ? (
+                                <QueryResults 
+                                    data={queryResult.data} 
+                                    rowCount={queryResult.rowCount}
+                                    shouldShowTable={queryResult.shouldShowTable}
+                                    sqlQuery={queryResult.sqlQuery}
+                                />
+                            ) : (
+                                <div className="text-center text-gray-500 py-8">
+                                    <p>No query results yet</p>
+                                    <p className="text-sm mt-2">
+                                        Ask a question in the chat to see results here
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Features Section */}
+                <div className="mt-12 bg-white rounded-lg shadow-lg p-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        Supported Features
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="text-center p-4">
+                            <div className="text-2xl mb-2">💬</div>
+                            <h4 className="font-medium text-gray-900">Natural Language</h4>
+                            <p className="text-sm text-gray-600">Ask questions in plain English</p>
+                        </div>
+                        <div className="text-center p-4">
+                            <div className="text-2xl mb-2">📊</div>
+                            <h4 className="font-medium text-gray-900">Smart Tables</h4>
+                            <p className="text-sm text-gray-600">Automatic table or text responses</p>
+                        </div>
+                        <div className="text-center p-4">
+                            <div className="text-2xl mb-2">📥</div>
+                            <h4 className="font-medium text-gray-900">CSV Export</h4>
+                            <p className="text-sm text-gray-600">Download results as CSV files</p>
+                        </div>
+                        <div className="text-center p-4">
+                            <div className="text-2xl mb-2">🔍</div>
+                            <h4 className="font-medium text-gray-900">SQL View</h4>
+                            <p className="text-sm text-gray-600">See the generated SQL queries</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-
-        {/* Dashboard Stats */}
-        <DashboardStats apps={apps} />
-
-        {/* Actions */}
-        <div className="mb-6 flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-gray-900">Apps</h2>
-          <button
-            onClick={() => setShowCreateForm(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-          >
-            Add New App
-          </button>
-        </div>
-
-        {/* Create App Form Modal */}
-        {showCreateForm && (
-          <CreateAppForm
-            onSubmit={handleCreateApp}
-            onCancel={() => setShowCreateForm(false)}
-          />
-        )}
-
-        {/* Apps List */}
-        {loading ? (
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          </div>
-        ) : (
-          <AppList apps={apps} onDelete={handleDeleteApp} />
-        )}
-
-        {/* Query Builder Section */}
-        <div className="mt-12">
-          <QueryBuilder />
-        </div>
-
-        {/* Chat Interface Section */}
-        <div className="mt-12">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Chat onQueryResult={handleChatQueryResult} />
-            <QueryResults result={chatQueryResult} sqlQuery={chatSqlQuery} />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+    )
 }

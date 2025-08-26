@@ -11,33 +11,21 @@ datasource db {
 }
 
 model App {
-  id          String   @id @default(cuid())
-  name        String
-  platform    String   // "ios" or "android"
-  country     String
-  revenue     Float    @default(0)
-  popularity  Int      @default(0) // Downloads or user count
-  uaSpend     Float    @default(0) // User acquisition spend
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(cuid())
+  appName       String   // App Name - The name of a mobile app
+  platform      String   // Platform - iOS or Android
+  date          DateTime // Date - The specific date for the data being reported
+  country       String   // Country - The geographic country where the app metrics were recorded
+  installs      Int      // Installs - The number of times the app was downloaded by users
+  inAppRevenue  Float    // In-App Revenue - Revenue generated from purchases made within the app
+  adsRevenue    Float    // Ads Revenue - Revenue earned from advertisements displayed within the app
+  uaCost        Float    // UA Cost - User Acquisition Cost – the amount spent on marketing and advertising
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  metrics Metric[]
   queries Query[]
 
   @@map("apps")
-}
-
-model Metric {
-  id          String   @id @default(cuid())
-  appId       String
-  date        DateTime
-  metricType  String   // "revenue", "downloads", "ua_spend", etc.
-  value       Float
-  createdAt   DateTime @default(now())
-
-  app App @relation(fields: [appId], references: [id], onDelete: Cascade)
-
-  @@map("metrics")
 }
 
 model Query {

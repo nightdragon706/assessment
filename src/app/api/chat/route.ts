@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { ChatRequest, ChatResponse, SQLMessage } from '@/types/chat'
 import { b } from '@/app/baml_client'
 import { SQLMessage as BamlSQLMessage } from '@/app/baml_client/types'
+import TypeBuilder from '@/app/baml_client/type_builder'
 
 // Tool functions for BAML integration
 const tools = {
@@ -55,18 +56,20 @@ const tools = {
             return {
                 totalApps: 0,
                 totalRevenue: 0,
-                totalDownloads: 0,
-                totalUaSpend: 0
+                totalInstalls: 0,
+                totalUaCost: 0
             }
         }
     }
 }
 
-// Replace the mock LLM response generation with BAML client
+// Enhanced LLM response generation with context awareness
 async function generateLLMResponse(
     userQuestion: string,
-    conversationHistory: SQLMessage[]
-): Promise<{ response: string; toolCalls?: unknown[] }> {
+    conversationHistory: SQLMessage[],
+    lastQueryResult?: any,
+    lastSqlQuery?: string
+): Promise<{ response: string; toolCalls?: unknown[]; shouldShowTable: boolean; sqlQuery?: string }> {
     try {
         // Convert conversation history to BAML format
         const bamlMessages: BamlSQLMessage[] = conversationHistory.map(msg => ({
@@ -75,12 +78,25 @@ async function generateLLMResponse(
             timestamp: msg.timestamp || null
         }))
 
-        // Call the BAML SQLAssistant function
-        const bamlResponse = await b.SQLAssistant(
+        // Add context about last query if available
+        let context = "User is asking about app portfolio analytics data"
+        if (lastQueryResult && lastSqlQuery) {
+            context += `. Last query returned ${lastQueryResult.rowCount} rows and used SQL: ${lastSqlQuery}`
+        }
+
+        // Create TypeBuilder instance
+        const tb = new TypeBuilder()
+
+        // Call the BAML SQLAssistant function with TypeBuilder
+        const bamlResponse = await b.withOptions({ tb }).SQLAssistant(
             userQuestion,
             bamlMessages,
-            "User is asking about app portfolio analytics data"
+            context
         )
+
+        // Debug: Log the BAML response structure
+        console.log('BAML Response keys:', Object.keys(bamlResponse))
+        console.log('BAML Response:', JSON.stringify(bamlResponse, null, 2))
 
         // Extract the response and any tool calls
         const response = bamlResponse.answer || "I'm here to help you analyze your app portfolio data!"
@@ -95,9 +111,27 @@ async function generateLLMResponse(
             }
         }
 
+        // Also check for tool_calls property specifically
+        if (bamlResponse.tool_calls && Array.isArray(bamlResponse.tool_calls)) {
+            toolCalls.push(...bamlResponse.tool_calls)
+        }
+
+        // If BAML didn't generate tool calls for a data question, modify the response
+        const isDataQuestion = /(how many|count|total|revenue|installs|apps|platform|country|which|what|list|show|display)/i.test(userQuestion)
+
+        if (isDataQuestion && toolCalls.length === 0) {
+            // BAML didn't generate tool calls for a data question - this is not ideal
+            // but we'll return the response as-is since you don't want manual fallbacks
+            console.log('BAML did not generate tool calls for data question:', userQuestion)
+        }
+
+        // Determine if response should show as table or text
+        const shouldShowTable = shouldDisplayAsTable(userQuestion, toolCalls.length > 0)
+
         return {
             response,
-            toolCalls: toolCalls.length > 0 ? toolCalls as unknown[] : undefined
+            toolCalls: toolCalls.length > 0 ? toolCalls as unknown[] : undefined,
+            shouldShowTable
         }
     } catch (error) {
         console.error('Error calling BAML SQLAssistant:', error)
@@ -105,24 +139,120 @@ async function generateLLMResponse(
         // Fallback response if BAML call fails
         return {
             response: `I can help you analyze your app portfolio data! You can ask me about:
-      - Revenue analysis
-      - Download/popularity metrics
+      - Revenue analysis (in-app and ads revenue)
+      - Install metrics
       - Platform comparisons (iOS vs Android)
       - Country performance
-      - ROI and UA spend analysis
+      - UA cost analysis
       
-      What specific data would you like to explore?`
+      What specific data would you like to explore?`,
+            shouldShowTable: false
         }
     }
 }
 
+// Determine if response should be displayed as table or text
+function shouldDisplayAsTable(question: string, hasToolCalls: boolean): boolean {
+    const tableKeywords = [
+        'list', 'show', 'display', 'table', 'chart', 'compare', 'ranking', 'top', 'bottom',
+        'country', 'platform', 'revenue', 'installs', 'cost', 'performance'
+    ]
+
+    const simpleKeywords = [
+        'how many', 'count', 'total', 'sum', 'average', 'mean'
+    ]
+
+    const questionLower = question.toLowerCase()
+
+    // If it has tool calls (SQL execution), likely needs table
+    if (hasToolCalls) return true
+
+    // Check for table keywords
+    if (tableKeywords.some(keyword => questionLower.includes(keyword))) {
+        return true
+    }
+
+    // Check for simple keywords (text response)
+    if (simpleKeywords.some(keyword => questionLower.includes(keyword))) {
+        return false
+    }
+
+    // Default to table for complex queries
+    return true
+}
+
+// Generate CSV from query results
+function generateCSV(data: any[]): string {
+    if (!data || data.length === 0) return ''
+
+    const headers = Object.keys(data[0])
+    const csvHeaders = headers.join(',')
+    const csvRows = data.map(row =>
+        headers.map(header => {
+            const value = row[header]
+            // Escape commas and quotes in CSV
+            if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+                return `"${value.replace(/"/g, '""')}"`
+            }
+            return value
+        }).join(',')
+    )
+
+    return [csvHeaders, ...csvRows].join('\n')
+}
+
+
+
 export async function POST(request: NextRequest) {
     try {
         const body: ChatRequest = await request.json()
-        const { message, conversationHistory } = body
+        const { message, conversationHistory, requestType = 'query' } = body
+
+        // Handle different request types
+        if (requestType === 'export_csv' && body.lastQueryResult) {
+            const csvData = generateCSV(body.lastQueryResult.data || [])
+            return new NextResponse(csvData, {
+                headers: {
+                    'Content-Type': 'text/csv',
+                    'Content-Disposition': 'attachment; filename="app_analytics.csv"'
+                }
+            })
+        }
+
+        if (requestType === 'show_sql' && body.lastSqlQuery) {
+            return NextResponse.json({
+                response: `Here's the SQL query I used:\n\n\`\`\`sql\n${body.lastSqlQuery}\n\`\`\``,
+                sqlQuery: body.lastSqlQuery,
+                shouldShowTable: false
+            })
+        }
+
+        // Check for off-topic questions
+        const offTopicKeywords = ['weather', 'news', 'sports', 'politics', 'joke', 'funny', 'music', 'movie']
+        const isOffTopic = offTopicKeywords.some(keyword =>
+            message.toLowerCase().includes(keyword)
+        )
+
+        if (isOffTopic) {
+            return NextResponse.json({
+                response: "I'm focused on helping you with app portfolio analytics. I can help you analyze revenue, installs, platform performance, and other app metrics. What would you like to know about your apps?",
+                shouldShowTable: false
+            })
+        }
+
+        // Get last query context for follow-ups
+        const lastQuery = conversationHistory.length > 0 ?
+            conversationHistory[conversationHistory.length - 1] : null
+        const lastQueryResult = body.lastQueryResult
+        const lastSqlQuery = body.lastSqlQuery
 
         // Generate LLM response
-        const llmResponse = await generateLLMResponse(message, conversationHistory)
+        const llmResponse = await generateLLMResponse(
+            message,
+            conversationHistory,
+            lastQueryResult,
+            lastSqlQuery
+        )
 
         let queryResult = null
         let sqlQuery = null
@@ -135,8 +265,8 @@ export async function POST(request: NextRequest) {
                 if (tool) {
                     const result = await tool(typedToolCall.arguments as any)
 
-                    if (typedToolCall.name === 'execute_sql_query') {
-                        queryResult = result
+                    if (typedToolCall.name === 'execute_sql_query' && result && typeof result === 'object' && 'success' in result) {
+                        queryResult = result as any
                         sqlQuery = (typedToolCall.arguments as any).sql_query
                     }
                 }
@@ -146,7 +276,8 @@ export async function POST(request: NextRequest) {
         const response: ChatResponse = {
             response: llmResponse.response,
             queryResult,
-            sqlQuery
+            sqlQuery,
+            shouldShowTable: llmResponse.shouldShowTable
         }
 
         return NextResponse.json(response)

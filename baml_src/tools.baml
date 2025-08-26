@@ -1,12 +1,3 @@
-class SwitchInfluenceStyle {
-    name "switch_influence_style" @description(#"
-        The name of the tool.
-    "#)
-    influence_style string @description(#"
-        The influence style to switch to.
-    "#)
-}
-
 class ExecuteSQLQuery {
     name "execute_sql_query" @description(#"
         Execute a SQL query against the app portfolio database.

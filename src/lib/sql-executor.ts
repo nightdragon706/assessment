@@ -195,16 +195,16 @@ export class SQLExecutor {
     static async getQueryStats(): Promise<{
         totalApps: number
         totalRevenue: number
-        totalDownloads: number
-        totalUaSpend: number
+        totalInstalls: number
+        totalUaCost: number
     }> {
         try {
             const result = await prisma.$queryRawUnsafe(`
         SELECT 
-          COUNT(*) as totalApps,
-          SUM(revenue) as totalRevenue,
-          SUM(popularity) as totalDownloads,
-          SUM(uaSpend) as totalUaSpend
+          COUNT(DISTINCT appName) as totalApps,
+          SUM(inAppRevenue + adsRevenue) as totalRevenue,
+          SUM(installs) as totalInstalls,
+          SUM(uaCost) as totalUaCost
         FROM apps
       `) as any[]
 
@@ -212,15 +212,15 @@ export class SQLExecutor {
             return {
                 totalApps: Number(stats.totalApps) || 0,
                 totalRevenue: Number(stats.totalRevenue) || 0,
-                totalDownloads: Number(stats.totalDownloads) || 0,
-                totalUaSpend: Number(stats.totalUaSpend) || 0
+                totalInstalls: Number(stats.totalInstalls) || 0,
+                totalUaCost: Number(stats.totalUaCost) || 0
             }
         } catch (error) {
             return {
                 totalApps: 0,
                 totalRevenue: 0,
-                totalDownloads: 0,
-                totalUaSpend: 0
+                totalInstalls: 0,
+                totalUaCost: 0
             }
         }
     }
