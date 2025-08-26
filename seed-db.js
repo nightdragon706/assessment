@@ -12,7 +12,7 @@ async function main() {
 
     console.log('Cleared existing data')
 
-    // Create sample apps
+    // Create sample apps with proper date values
     const apps = await Promise.all([
         prisma.app.create({
             data: {
@@ -22,6 +22,8 @@ async function main() {
                 revenue: 1500000,
                 popularity: 50000000,
                 uaSpend: 250000,
+                createdAt: new Date('2024-01-15'),
+                updatedAt: new Date('2025-08-20'), // Recent update
             },
         }),
         prisma.app.create({
@@ -32,6 +34,8 @@ async function main() {
                 revenue: 1200000,
                 popularity: 45000000,
                 uaSpend: 200000,
+                createdAt: new Date('2023-06-10'),
+                updatedAt: new Date('2025-08-15'), // Recent update
             },
         }),
         prisma.app.create({
@@ -42,6 +46,8 @@ async function main() {
                 revenue: 800000,
                 popularity: 35000000,
                 uaSpend: 150000,
+                createdAt: new Date('2022-11-05'),
+                updatedAt: new Date('2025-07-25'), // Last month update
             },
         }),
         prisma.app.create({
@@ -52,6 +58,8 @@ async function main() {
                 revenue: 900000,
                 popularity: 30000000,
                 uaSpend: 180000,
+                createdAt: new Date('2023-03-20'),
+                updatedAt: new Date('2025-07-30'), // Last month update
             },
         }),
         prisma.app.create({
@@ -62,13 +70,15 @@ async function main() {
                 revenue: 2000000,
                 popularity: 25000000,
                 uaSpend: 300000,
+                createdAt: new Date('2022-08-12'),
+                updatedAt: new Date('2025-08-10'), // Recent update
             },
         }),
     ])
 
     console.log('Created apps:', apps.length)
 
-    // Create sample metrics
+    // Create sample metrics with proper dates
     for (const app of apps) {
         await prisma.metric.createMany({
             data: [
@@ -95,6 +105,18 @@ async function main() {
                     date: new Date('2024-02-01'),
                     metricType: 'downloads',
                     value: app.popularity * 0.8,
+                },
+                {
+                    appId: app.id,
+                    date: new Date('2025-07-01'),
+                    metricType: 'revenue',
+                    value: app.revenue * 0.95,
+                },
+                {
+                    appId: app.id,
+                    date: new Date('2025-08-01'),
+                    metricType: 'revenue',
+                    value: app.revenue,
                 },
             ],
         })

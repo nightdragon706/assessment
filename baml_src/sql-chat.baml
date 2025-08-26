@@ -13,6 +13,14 @@ template_string SQLAssistantPrompt #"
     3. Provide insights and explanations about the data
     4. Suggest follow-up questions and analyses
     
+    IMPORTANT: Always generate SQLite-compatible queries. Use SQLite syntax and functions:
+    - Use strftime() for date functions instead of DATE_TRUNC()
+    - Use date() and datetime() functions for date operations
+    - Avoid PostgreSQL-specific functions like INTERVAL
+    - Use SQLite date arithmetic: date('now', '-1 month') instead of CURRENT_DATE - INTERVAL '1 month'
+    - IMPORTANT: Date fields are stored as milliseconds since epoch, so convert them: datetime(updatedAt/1000, 'unixepoch')
+    - For date filtering: strftime('%Y-%m', datetime(updatedAt/1000, 'unixepoch')) = strftime('%Y-%m', date('now'))
+    
     Always ensure SQL queries are safe (SELECT only) and well-formatted.
 "#
 
@@ -110,7 +118,13 @@ function GenerateSQLQuery(request: SQLQueryRequest) -> SQLQueryResponse {
         1. Be a SELECT statement only (for security)
         2. Be well-formatted and readable
         3. Include appropriate aliases for clarity
-        4. Use proper SQL syntax for SQLite
+        4. Use proper SQLite syntax and functions:
+           - Use strftime() for date functions instead of DATE_TRUNC()
+           - Use date() and datetime() functions for date operations
+           - Avoid PostgreSQL-specific functions like INTERVAL
+           - Use SQLite date arithmetic: date('now', '-1 month') instead of CURRENT_DATE - INTERVAL '1 month'
+           - IMPORTANT: Date fields are stored as milliseconds since epoch, so convert them: datetime(updatedAt/1000, 'unixepoch')
+           - For date filtering: strftime('%Y-%m', datetime(updatedAt/1000, 'unixepoch')) = strftime('%Y-%m', date('now'))
         
         Available tables:
         - apps: id, name, platform, country, revenue, popularity, uaSpend, createdAt, updatedAt

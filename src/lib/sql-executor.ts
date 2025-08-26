@@ -15,6 +15,33 @@ export interface QueryExecutionOptions {
     timeout?: number
 }
 
+/**
+ * Convert BigInt values to regular numbers for JSON serialization
+ */
+function convertBigIntsToNumbers(obj: any): any {
+    if (obj === null || obj === undefined) {
+        return obj
+    }
+
+    if (typeof obj === 'bigint') {
+        return Number(obj)
+    }
+
+    if (Array.isArray(obj)) {
+        return obj.map(convertBigIntsToNumbers)
+    }
+
+    if (typeof obj === 'object') {
+        const converted: any = {}
+        for (const [key, value] of Object.entries(obj)) {
+            converted[key] = convertBigIntsToNumbers(value)
+        }
+        return converted
+    }
+
+    return obj
+}
+
 export class SQLExecutor {
     /**
      * Execute a SQL template by ID
@@ -64,7 +91,8 @@ export class SQLExecutor {
             const result = await prisma.$queryRawUnsafe(finalSql)
 
             const executionTime = Date.now() - startTime
-            const data = Array.isArray(result) ? result : [result]
+            const rawData = Array.isArray(result) ? result : [result]
+            const data = convertBigIntsToNumbers(rawData)
 
             return {
                 success: true,
@@ -125,7 +153,6 @@ export class SQLExecutor {
             'create table',
             'alter table',
             'truncate',
-            '--',
             '/*',
             '*/'
         ]
@@ -135,6 +162,26 @@ export class SQLExecutor {
                 return {
                     isValid: false,
                     error: `Query contains forbidden pattern: ${pattern}`
+                }
+            }
+        }
+
+        // Allow SQL comments but check for potential injection after comments
+        // This allows legitimate comments like "-- Include apps created before this month"
+        // but prevents injection attempts like "-- DROP TABLE users;"
+        const lines = sql.split('\n')
+        for (const line of lines) {
+            const trimmedLine = line.trim()
+            if (trimmedLine.startsWith('--')) {
+                const commentContent = trimmedLine.substring(2).trim().toLowerCase()
+                // Check if comment contains dangerous patterns
+                for (const pattern of dangerousPatterns) {
+                    if (commentContent.includes(pattern)) {
+                        return {
+                            isValid: false,
+                            error: `Comment contains forbidden pattern: ${pattern}`
+                        }
+                    }
                 }
             }
         }
@@ -161,7 +208,7 @@ export class SQLExecutor {
         FROM apps
       `) as any[]
 
-            const stats = result[0]
+            const stats = convertBigIntsToNumbers(result[0])
             return {
                 totalApps: Number(stats.totalApps) || 0,
                 totalRevenue: Number(stats.totalRevenue) || 0,
