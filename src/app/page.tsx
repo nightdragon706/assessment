@@ -6,6 +6,7 @@ import { appsApi } from '@/lib/api'
 import AppList from '@/components/AppList'
 import CreateAppForm from '@/components/CreateAppForm'
 import DashboardStats from '@/components/DashboardStats'
+import QueryBuilder from '@/components/QueryBuilder'
 
 export default function Home() {
   const [apps, setApps] = useState<App[]>([])
@@ -90,6 +91,11 @@ export default function Home() {
         ) : (
           <AppList apps={apps} onDelete={handleDeleteApp} />
         )}
+
+        {/* Query Builder Section */}
+        <div className="mt-12">
+          <QueryBuilder />
+        </div>
       </div>
     </div>
   )
