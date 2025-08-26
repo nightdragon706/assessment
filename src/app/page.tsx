@@ -7,11 +7,15 @@ import AppList from '@/components/AppList'
 import CreateAppForm from '@/components/CreateAppForm'
 import DashboardStats from '@/components/DashboardStats'
 import QueryBuilder from '@/components/QueryBuilder'
+import Chat from '@/components/Chat'
+import QueryResults from '@/components/QueryResults'
 
 export default function Home() {
   const [apps, setApps] = useState<App[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateForm, setShowCreateForm] = useState(false)
+  const [chatQueryResult, setChatQueryResult] = useState<any>(null)
+  const [chatSqlQuery, setChatSqlQuery] = useState<string>('')
 
   useEffect(() => {
     loadApps()
@@ -45,6 +49,13 @@ export default function Home() {
       await loadApps()
     } catch (error) {
       console.error('Error deleting app:', error)
+    }
+  }
+
+  const handleChatQueryResult = (result: any) => {
+    setChatQueryResult(result)
+    if (result?.sqlQuery) {
+      setChatSqlQuery(result.sqlQuery)
     }
   }
 
@@ -95,6 +106,14 @@ export default function Home() {
         {/* Query Builder Section */}
         <div className="mt-12">
           <QueryBuilder />
+        </div>
+
+        {/* Chat Interface Section */}
+        <div className="mt-12">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Chat onQueryResult={handleChatQueryResult} />
+            <QueryResults result={chatQueryResult} sqlQuery={chatSqlQuery} />
+          </div>
         </div>
       </div>
     </div>
