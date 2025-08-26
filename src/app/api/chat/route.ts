@@ -5,7 +5,6 @@ import { prisma } from '@/lib/prisma'
 import { ChatRequest, ChatResponse, SQLMessage } from '@/types/chat'
 import { b } from '@/app/baml_client'
 import { SQLMessage as BamlSQLMessage } from '@/app/baml_client/types'
-import TypeBuilder from '@/app/baml_client/type_builder'
 
 // Tool functions for BAML integration
 const tools = {
@@ -84,11 +83,16 @@ async function generateLLMResponse(
             context += `. Last query returned ${lastQueryResult.rowCount} rows and used SQL: ${lastSqlQuery}`
         }
 
-        // Create TypeBuilder instance
-        const tb = new TypeBuilder()
+        // Add conversation context for follow-up questions
+        if (conversationHistory.length > 1) {
+            const lastMessage = conversationHistory[conversationHistory.length - 1]
+            if (lastMessage.role === 'assistant' && lastMessage.content.includes('apps')) {
+                context += '. This appears to be a follow-up question about apps.'
+            }
+        }
 
-        // Call the BAML SQLAssistant function with TypeBuilder
-        const bamlResponse = await b.withOptions({ tb }).SQLAssistant(
+        // Call the BAML SQLAssistant function
+        const bamlResponse = await b.SQLAssistant(
             userQuestion,
             bamlMessages,
             context
@@ -98,34 +102,39 @@ async function generateLLMResponse(
         console.log('BAML Response keys:', Object.keys(bamlResponse))
         console.log('BAML Response:', JSON.stringify(bamlResponse, null, 2))
 
-        // Extract the response and any tool calls
+        // Extract the response
         const response = bamlResponse.answer || "I'm here to help you analyze your app portfolio data!"
 
-        // Check if the response contains tool calls (they would be in the dynamic properties)
-        const toolCalls: unknown[] = []
+        // Extract tool calls from the response
+        let toolCalls: any[] = []
 
-        // Look for tool calls in the dynamic properties of the response
-        for (const [key, value] of Object.entries(bamlResponse)) {
-            if (key !== 'answer' && Array.isArray(value)) {
-                toolCalls.push(...value)
+        // Check if tool_calls exists in the response
+        if (bamlResponse.tool_calls && Array.isArray(bamlResponse.tool_calls)) {
+            toolCalls = bamlResponse.tool_calls
+        }
+
+        // Also check for tool calls in the raw response (since TypeBuilder is only for tests)
+        // The LLM might include tool calls in the answer field as JSON
+        if (!toolCalls.length && bamlResponse.answer) {
+            try {
+                // Look for JSON-like content in the answer
+                const answerText = bamlResponse.answer
+                if (answerText.includes('tool_calls') || answerText.includes('"tool"')) {
+                    // Try to extract JSON from the answer
+                    const jsonMatch = answerText.match(/\{[\s\S]*\}/)
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0])
+                        if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
+                            toolCalls = parsed.tool_calls
+                        }
+                    }
+                }
+            } catch (error) {
+                console.log('Could not parse tool calls from answer:', error)
             }
         }
 
-        // Also check for tool_calls property specifically
-        if (bamlResponse.tool_calls && Array.isArray(bamlResponse.tool_calls)) {
-            toolCalls.push(...bamlResponse.tool_calls)
-        }
-
-        // If BAML didn't generate tool calls for a data question, modify the response
-        const isDataQuestion = /(how many|count|total|revenue|installs|apps|platform|country|which|what|list|show|display)/i.test(userQuestion)
-
-        if (isDataQuestion && toolCalls.length === 0) {
-            // BAML didn't generate tool calls for a data question - this is not ideal
-            // but we'll return the response as-is since you don't want manual fallbacks
-            console.log('BAML did not generate tool calls for data question:', userQuestion)
-        }
-
-        // Determine if response should show as table or text
+        // Determine if response should show as table or text based on question complexity
         const shouldShowTable = shouldDisplayAsTable(userQuestion, toolCalls.length > 0)
 
         return {
@@ -153,32 +162,48 @@ async function generateLLMResponse(
 
 // Determine if response should be displayed as table or text
 function shouldDisplayAsTable(question: string, hasToolCalls: boolean): boolean {
-    const tableKeywords = [
-        'list', 'show', 'display', 'table', 'chart', 'compare', 'ranking', 'top', 'bottom',
-        'country', 'platform', 'revenue', 'installs', 'cost', 'performance'
-    ]
-
-    const simpleKeywords = [
-        'how many', 'count', 'total', 'sum', 'average', 'mean'
-    ]
-
     const questionLower = question.toLowerCase()
 
-    // If it has tool calls (SQL execution), likely needs table
-    if (hasToolCalls) return true
+    // Simple questions that should show as text (no table)
+    const simpleQuestions = [
+        'how many apps do we have',
+        'how many android apps',
+        'how many ios apps',
+        'what about ios',
+        'what about android'
+    ]
 
-    // Check for table keywords
-    if (tableKeywords.some(keyword => questionLower.includes(keyword))) {
-        return true
-    }
+    // Complex questions that should show as table
+    const complexQuestions = [
+        'which country generates the most revenue',
+        'list all ios apps',
+        'show me',
+        'display',
+        'compare',
+        'ranking',
+        'top',
+        'bottom',
+        'biggest change',
+        'ua spend'
+    ]
 
-    // Check for simple keywords (text response)
-    if (simpleKeywords.some(keyword => questionLower.includes(keyword))) {
+    // Check for simple questions first
+    if (simpleQuestions.some(simple => questionLower.includes(simple))) {
         return false
     }
 
-    // Default to table for complex queries
-    return true
+    // Check for complex questions
+    if (complexQuestions.some(complex => questionLower.includes(complex))) {
+        return true
+    }
+
+    // If it has tool calls and returns data, show as table
+    if (hasToolCalls) {
+        return true
+    }
+
+    // Default to text for simple responses
+    return false
 }
 
 // Generate CSV from query results
@@ -227,6 +252,24 @@ export async function POST(request: NextRequest) {
             })
         }
 
+        // Handle "show me the SQL" requests in natural language
+        if (message.toLowerCase().includes('show me the sql') ||
+            message.toLowerCase().includes('sql you used') ||
+            message.toLowerCase().includes('sql query')) {
+            if (body.lastSqlQuery) {
+                return NextResponse.json({
+                    response: `Here's the SQL query I used:\n\n\`\`\`sql\n${body.lastSqlQuery}\n\`\`\``,
+                    sqlQuery: body.lastSqlQuery,
+                    shouldShowTable: false
+                })
+            } else {
+                return NextResponse.json({
+                    response: "I haven't executed any SQL queries yet. Ask me a question about your app data first!",
+                    shouldShowTable: false
+                })
+            }
+        }
+
         // Check for off-topic questions
         const offTopicKeywords = ['weather', 'news', 'sports', 'politics', 'joke', 'funny', 'music', 'movie']
         const isOffTopic = offTopicKeywords.some(keyword =>
@@ -254,21 +297,36 @@ export async function POST(request: NextRequest) {
             lastSqlQuery
         )
 
-        let queryResult = null
-        let sqlQuery = null
+        let queryResult: any = null
+        let sqlQuery: string | undefined = undefined
 
         // Execute tool calls if any
         if (llmResponse.toolCalls) {
             for (const toolCall of llmResponse.toolCalls) {
-                const typedToolCall = toolCall as { name: string; arguments: Record<string, unknown> }
-                const tool = tools[typedToolCall.name as keyof typeof tools]
-                if (tool) {
-                    const result = await tool(typedToolCall.arguments as any)
+                // Handle the tool call format from BAML
+                const typedToolCall = toolCall as { tool?: string; name?: string; parameters?: any; arguments?: any }
+                const toolName = typedToolCall.tool || typedToolCall.name
+                const toolArgs = typedToolCall.parameters || typedToolCall.arguments
 
-                    if (typedToolCall.name === 'execute_sql_query' && result && typeof result === 'object' && 'success' in result) {
-                        queryResult = result as any
-                        sqlQuery = (typedToolCall.arguments as any).sql_query
+                if (toolName === 'execute_sql_query') {
+                    const sqlQueryText = toolArgs?.query || toolArgs?.sql_query
+                    const queryDescription = toolArgs?.query_description || 'User query'
+
+                    if (sqlQueryText) {
+                        const result = await tools.execute_sql_query({
+                            sql_query: sqlQueryText,
+                            query_description: queryDescription
+                        })
+
+                        if (result && typeof result === 'object' && 'success' in result) {
+                            queryResult = result as any
+                            sqlQuery = sqlQueryText
+                        }
                     }
+                } else if (toolName === 'get_query_templates') {
+                    await tools.get_query_templates(toolArgs || {})
+                } else if (toolName === 'get_database_stats') {
+                    await tools.get_database_stats()
                 }
             }
         }
