@@ -111,9 +111,10 @@ function SQLAssistant(
         Do not make up numbers. Always use real data from the database.
         
         IMPORTANT: 
-        - Provide a natural language answer in the 'answer' field
+        - Provide a brief acknowledgment in the 'answer' field (e.g., "Let me check the database for you.")
         - Use the 'tool_calls' field to execute SQL queries
         - Do NOT put tool calls inside the answer text
+        - Do NOT provide final answers with numbers - the SQL execution will provide the actual data
 
         {{ ctx.output_format }}
     "#

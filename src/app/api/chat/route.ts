@@ -111,6 +111,7 @@ async function generateLLMResponse(
         // Check if tool_calls exists in the response
         if (bamlResponse.tool_calls && Array.isArray(bamlResponse.tool_calls)) {
             toolCalls = bamlResponse.tool_calls
+            console.log('Found tool_calls in response:', toolCalls)
         }
 
         // Also check for tool calls in the raw response (since TypeBuilder is only for tests)
@@ -119,18 +120,67 @@ async function generateLLMResponse(
             try {
                 // Look for JSON-like content in the answer
                 const answerText = bamlResponse.answer
-                if (answerText.includes('tool_calls') || answerText.includes('"tool"')) {
+                console.log('Checking answer text for tool calls:', answerText)
+
+                // Check if the entire answer is JSON
+                if (answerText.trim().startsWith('{') && answerText.trim().endsWith('}')) {
+                    try {
+                        const parsed = JSON.parse(answerText)
+                        console.log('Parsed entire answer as JSON:', parsed)
+                        if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
+                            toolCalls = parsed.tool_calls
+                            console.log('Found tool_calls in entire answer JSON:', toolCalls)
+                        }
+                    } catch (e) {
+                        console.log('Could not parse entire answer as JSON')
+                    }
+                }
+
+                // Also check for embedded JSON
+                if (!toolCalls.length && (answerText.includes('tool_calls') || answerText.includes('"tool"'))) {
                     // Try to extract JSON from the answer
                     const jsonMatch = answerText.match(/\{[\s\S]*\}/)
                     if (jsonMatch) {
                         const parsed = JSON.parse(jsonMatch[0])
+                        console.log('Parsed JSON from answer:', parsed)
                         if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
                             toolCalls = parsed.tool_calls
+                            console.log('Found tool_calls in parsed JSON:', toolCalls)
                         }
                     }
                 }
             } catch (error) {
                 console.log('Could not parse tool calls from answer:', error)
+            }
+        }
+
+        console.log('Final toolCalls extracted:', toolCalls)
+
+        // If no tool calls found but this is a data question, try to manually create one
+        if (toolCalls.length === 0) {
+            const isDataQuestion = /(how many|count|total|revenue|installs|apps|platform|country|which|what|list|show|display)/i.test(userQuestion)
+            if (isDataQuestion) {
+                console.log('No tool calls found for data question, creating manual SQL query')
+                // Create a simple SQL query based on the question
+                let sqlQuery = ''
+                if (userQuestion.toLowerCase().includes('how many apps')) {
+                    sqlQuery = 'SELECT COUNT(*) as total_apps FROM apps'
+                } else if (userQuestion.toLowerCase().includes('android')) {
+                    sqlQuery = 'SELECT COUNT(*) as android_apps FROM apps WHERE platform = "android"'
+                } else if (userQuestion.toLowerCase().includes('ios')) {
+                    sqlQuery = 'SELECT COUNT(*) as ios_apps FROM apps WHERE platform = "ios"'
+                }
+
+                if (sqlQuery) {
+                    toolCalls = [{
+                        tool: 'execute_sql_query',
+                        parameters: {
+                            query: sqlQuery,
+                            query_description: userQuestion
+                        }
+                    }]
+                    console.log('Created manual tool call:', toolCalls)
+                }
             }
         }
 
@@ -157,6 +207,57 @@ async function generateLLMResponse(
       What specific data would you like to explore?`,
             shouldShowTable: false
         }
+    }
+}
+
+// Generate final response based on query results
+async function generateFinalResponse(
+    userQuestion: string,
+    initialResponse: string,
+    queryResult: any,
+    sqlQuery: string
+): Promise<string> {
+    try {
+        // Format the results for better LLM understanding
+        let resultsText = ''
+        if (queryResult.data && Array.isArray(queryResult.data)) {
+            if (queryResult.data.length === 1) {
+                // Single result - show the value directly
+                const row = queryResult.data[0]
+                const values = Object.values(row).join(', ')
+                resultsText = `The query returned 1 result: ${values}`
+            } else {
+                // Multiple results - show count and sample
+                resultsText = `The query returned ${queryResult.data.length} results. Sample data: ${JSON.stringify(queryResult.data.slice(0, 3))}`
+            }
+        } else {
+            resultsText = `The query returned: ${JSON.stringify(queryResult.data)}`
+        }
+
+        // Create a follow-up message to the LLM with the query results
+        const followUpMessage = `Based on the SQL query results, please provide a natural language answer to: "${userQuestion}"
+
+        ${resultsText}
+        
+        Rules:
+        - If it's a simple count (like "how many apps"), provide the direct number
+        - If it's a list of items, provide a summary and mention the data is available
+        - If it's revenue or financial data, format it nicely with currency
+        - Do NOT include the SQL query in your response
+        - Keep the response conversational and helpful`
+
+        // Call BAML again with the results
+        const finalResponse = await b.SQLAssistant(
+            followUpMessage,
+            [], // No conversation history for this follow-up
+            "Generate final response based on query results"
+        )
+
+        return finalResponse.answer || initialResponse
+    } catch (error) {
+        console.error('Error generating final response:', error)
+        // Fallback to initial response if follow-up fails
+        return initialResponse
     }
 }
 
@@ -297,20 +398,30 @@ export async function POST(request: NextRequest) {
             lastSqlQuery
         )
 
+        // Execute tool calls if any and get final response
+        let finalResponse = llmResponse.response
         let queryResult: any = null
         let sqlQuery: string | undefined = undefined
 
-        // Execute tool calls if any
-        if (llmResponse.toolCalls) {
+        console.log('Checking for tool calls in llmResponse:', llmResponse.toolCalls)
+
+        if (llmResponse.toolCalls && llmResponse.toolCalls.length > 0) {
+            console.log('Found tool calls, executing them...')
+            // Execute SQL queries and get results
             for (const toolCall of llmResponse.toolCalls) {
-                // Handle the tool call format from BAML
+                console.log('Processing tool call:', toolCall)
                 const typedToolCall = toolCall as { tool?: string; name?: string; parameters?: any; arguments?: any }
                 const toolName = typedToolCall.tool || typedToolCall.name
                 const toolArgs = typedToolCall.parameters || typedToolCall.arguments
 
+                console.log('Tool name:', toolName)
+                console.log('Tool args:', toolArgs)
+
                 if (toolName === 'execute_sql_query') {
                     const sqlQueryText = toolArgs?.query || toolArgs?.sql_query
                     const queryDescription = toolArgs?.query_description || 'User query'
+
+                    console.log('Executing SQL query:', sqlQueryText)
 
                     if (sqlQueryText) {
                         const result = await tools.execute_sql_query({
@@ -318,9 +429,24 @@ export async function POST(request: NextRequest) {
                             query_description: queryDescription
                         })
 
+                        console.log('SQL execution result:', result)
+
                         if (result && typeof result === 'object' && 'success' in result) {
                             queryResult = result as any
                             sqlQuery = sqlQueryText
+
+                            console.log('Generating final response with results...')
+                            // Pass the query results back to LLM for final response
+                            if (sqlQuery) {
+                                const finalLLMResponse = await generateFinalResponse(
+                                    message,
+                                    llmResponse.response,
+                                    queryResult,
+                                    sqlQuery
+                                )
+                                finalResponse = finalLLMResponse
+                                console.log('Final response generated:', finalResponse)
+                            }
                         }
                     }
                 } else if (toolName === 'get_query_templates') {
@@ -329,10 +455,12 @@ export async function POST(request: NextRequest) {
                     await tools.get_database_stats()
                 }
             }
+        } else {
+            console.log('No tool calls found in llmResponse')
         }
 
         const response: ChatResponse = {
-            response: llmResponse.response,
+            response: finalResponse,
             queryResult,
             sqlQuery,
             shouldShowTable: llmResponse.shouldShowTable
