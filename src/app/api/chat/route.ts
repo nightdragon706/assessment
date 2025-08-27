@@ -204,6 +204,7 @@ export async function POST(request: NextRequest) {
     try {
         const body: ChatRequest = await request.json()
         const { message, conversationHistory, requestType = 'query' } = body
+        const origin = request.headers.get('x-origin') || ''
 
         // Handle different request types
         if (requestType === 'export_csv' && body.lastQueryResult) {
@@ -325,8 +326,8 @@ export async function POST(request: NextRequest) {
             initialResponse: queryResult !== null ? llmResponse.response : undefined
         }
 
-        // Best-effort: forward assistant answer to Slack if configured
-        if (response.response) {
+        // Best-effort: forward assistant answer to Slack if configured, but only for web-originated requests
+        if (response.response && origin !== 'slack') {
             postToSlackChannel(response.response)
         }
 
