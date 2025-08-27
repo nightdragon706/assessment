@@ -5,6 +5,29 @@ import { ChatRequest, ChatResponse, SQLMessage } from '@/types/chat'
 import { b } from '@/app/baml_client'
 import { SQLMessage as BamlSQLMessage } from '@/app/baml_client/types'
 
+// Optional: forward assistant answers to Slack
+async function postToSlackChannel(text: string) {
+    const token = process.env.SLACK_BOT_TOKEN
+    const channel = process.env.SLACK_CHANNEL_ID
+    if (!token || !channel || !text) return
+    try {
+        const res = await fetch('https://slack.com/api/chat.postMessage', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ channel, text })
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!json?.ok) {
+            console.log('Slack post error:', json)
+        }
+    } catch (e) {
+        console.log('Slack post exception:', e)
+    }
+}
+
 // Tool functions for BAML integration
 const tools = {
     async execute_sql_query(args: { sql_query: string; query_description: string }) {
@@ -300,6 +323,11 @@ export async function POST(request: NextRequest) {
             isTwoStepResponse: queryResult !== null,
             // Add initial response for two-step process
             initialResponse: queryResult !== null ? llmResponse.response : undefined
+        }
+
+        // Best-effort: forward assistant answer to Slack if configured
+        if (response.response) {
+            postToSlackChannel(response.response)
         }
 
         return NextResponse.json(response)
