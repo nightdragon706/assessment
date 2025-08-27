@@ -126,64 +126,29 @@ async function generateFinalResponse(
     sqlQuery: string
 ): Promise<string> {
     try {
-        // Format the results for better LLM understanding
-        let resultsText = ''
-        if (queryResult.data && Array.isArray(queryResult.data)) {
-            if (queryResult.data.length === 1) {
-                // Single result - show the value directly
-                const row = queryResult.data[0]
-                const values = Object.values(row).join(', ')
-                resultsText = `The query returned 1 result: ${values}`
-            } else {
-                // Multiple results - show count and sample
-                resultsText = `The query returned ${queryResult.data.length} results. Sample data: ${JSON.stringify(queryResult.data.slice(0, 3))}`
-            }
-        } else {
-            resultsText = `The query returned: ${JSON.stringify(queryResult.data)}`
-        }
+        // Call the LLM again to compose the final natural-language answer using the real results.
+        // Strongly instruct it not to call tools again.
+        const context = `You have already executed the necessary SQL for the user's question.
+Results JSON (trim large arrays to first 50 rows if needed): ${JSON.stringify(queryResult?.data ?? [])}
 
-        // Create a follow-up message to the LLM with the query results
-        const followUpMessage = `Based on the SQL query results, please provide a natural language answer to: "${userQuestion}"
+SQL used (do not display unless separately asked via the show_sql_query tool): ${sqlQuery}
 
-        ${resultsText}
-        
-        Rules:
-        - If it's a simple count (like "how many apps"), provide the direct number
-        - If it's a list of items, provide a summary and mention the data is available
-        - If it's revenue or financial data, format it nicely with currency (e.g., "$1,234.56")
-        - If it's a comparison or ranking, highlight the top performers
-        - If it's multiple rows, provide insights and mention the full data is available
-        - Do NOT include the SQL query in your response
-        - Keep the response conversational and helpful
-        - For single values, be direct and clear
-        - For multiple values, provide context and insights`
+Instructions:
+- Provide a concise, professional natural-language answer to the user's question using the provided results only.
+- Do NOT make up numbers; use only values present in Results JSON.
+- Do NOT call any tools in this step.
+- If the result is a single aggregate (e.g., count), state the number directly.
+- If multiple rows, summarize key insights and counts.
+- Do NOT include the raw SQL in your answer.`
 
-        // Instead of calling BAML again, create a simple, direct response based on the data
-        if (queryResult.data && Array.isArray(queryResult.data)) {
-            if (queryResult.data.length === 1) {
-                const row = queryResult.data[0]
-                const country = row.country || row.appName || row.platform || 'Unknown'
-                const revenue = row.total_revenue || row.revenue || row.inAppRevenue || row.adsRevenue || 0
+        const finalize = await b.SQLAssistant(
+            userQuestion,
+            [],
+            context
+        )
 
-                // Format the response based on the question type
-                if (userQuestion.toLowerCase().includes('country') && userQuestion.toLowerCase().includes('revenue')) {
-                    return `The country generating the most revenue is ${country}, with a total revenue of $${revenue.toLocaleString()}.`
-                } else if (userQuestion.toLowerCase().includes('how many')) {
-                    return `You have ${revenue} ${country.toLowerCase()} apps.`
-                } else {
-                    return `Based on the data: ${country} has ${revenue.toLocaleString()}.`
-                }
-            } else {
-                // Multiple results - provide a summary
-                return `The query returned ${queryResult.data.length} results. The top performers are: ${queryResult.data.slice(0, 3).map((row: any) => {
-                    const name = row.country || row.appName || row.platform || 'Unknown'
-                    const value = row.total_revenue || row.revenue || row.installs || 0
-                    return `${name} (${value.toLocaleString()})`
-                }).join(', ')}.`
-            }
-        }
-
-        return `Based on the query results: ${resultsText}`
+        // Prefer the model's natural language answer; ignore any tool calls in this finalize step
+        return finalize.answer || initialResponse
     } catch (error) {
         console.error('Error generating final response:', error)
         // Fallback to initial response if follow-up fails
