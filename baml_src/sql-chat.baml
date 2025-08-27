@@ -74,7 +74,9 @@ class ResponseSQLChat {
     answer string @stream.not_null @description(#"
         The assistant's response to the user's question.
     "#)
-    @@dynamic
+    tool_calls (ExecuteSQLQuery | GetQueryTemplates | GetDatabaseStats)[]? @description(#"
+        Tool calls to execute SQL queries or get data.
+    "#)
 }
 
 function SQLAssistant(
@@ -153,11 +155,6 @@ function GenerateSQLQuery(request: SQLQueryRequest) -> SQLQueryResponse {
 
 test TestSQLAssistant {
     functions [SQLAssistant]
-    type_builder {
-        dynamic class ResponseSQLChat {
-            tool_calls (ExecuteSQLQuery | GetQueryTemplates | GetDatabaseStats)[]
-        }
-    }
     args {
         user_question "how many android apps do we have?"
         messages [

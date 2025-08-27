@@ -155,41 +155,29 @@ async function generateLLMResponse(
         }
 
         console.log('Final toolCalls extracted:', toolCalls)
+        console.log('Tool calls length:', toolCalls.length)
+        console.log('Tool calls type:', typeof toolCalls)
 
-        // If no tool calls found but this is a data question, try to manually create one
+        // If no tool calls found, log it for debugging
         if (toolCalls.length === 0) {
-            const isDataQuestion = /(how many|count|total|revenue|installs|apps|platform|country|which|what|list|show|display)/i.test(userQuestion)
+            const isDataQuestion = /(how many|count|total|revenue|installs|apps|platform|country|which|what|list|show|display|top|bottom|highest|lowest|average|sum|most|least)/i.test(userQuestion)
             if (isDataQuestion) {
-                console.log('No tool calls found for data question, creating manual SQL query')
-                // Create a simple SQL query based on the question
-                let sqlQuery = ''
-                if (userQuestion.toLowerCase().includes('how many apps')) {
-                    sqlQuery = 'SELECT COUNT(*) as total_apps FROM apps'
-                } else if (userQuestion.toLowerCase().includes('android')) {
-                    sqlQuery = 'SELECT COUNT(*) as android_apps FROM apps WHERE platform = "android"'
-                } else if (userQuestion.toLowerCase().includes('ios')) {
-                    sqlQuery = 'SELECT COUNT(*) as ios_apps FROM apps WHERE platform = "ios"'
-                }
-
-                if (sqlQuery) {
-                    toolCalls = [{
-                        tool: 'execute_sql_query',
-                        parameters: {
-                            query: sqlQuery,
-                            query_description: userQuestion
-                        }
-                    }]
-                    console.log('Created manual tool call:', toolCalls)
-                }
+                console.log('WARNING: No tool calls found for data question:', userQuestion)
+                console.log('This should not happen - the LLM should generate execute_sql_query tool calls')
             }
         }
 
         // Determine if response should show as table or text based on question complexity
         const shouldShowTable = shouldDisplayAsTable(userQuestion, toolCalls.length > 0)
 
+        console.log('About to return from generateLLMResponse:')
+        console.log('- toolCalls:', toolCalls)
+        console.log('- toolCalls.length:', toolCalls.length)
+        console.log('- toolCalls.length > 0:', toolCalls.length > 0)
+
         return {
             response,
-            toolCalls: toolCalls.length > 0 ? toolCalls as unknown[] : undefined,
+            toolCalls: toolCalls as unknown[],
             shouldShowTable
         }
     } catch (error) {
@@ -209,6 +197,8 @@ async function generateLLMResponse(
         }
     }
 }
+
+
 
 // Generate final response based on query results
 async function generateFinalResponse(
@@ -242,18 +232,40 @@ async function generateFinalResponse(
         Rules:
         - If it's a simple count (like "how many apps"), provide the direct number
         - If it's a list of items, provide a summary and mention the data is available
-        - If it's revenue or financial data, format it nicely with currency
+        - If it's revenue or financial data, format it nicely with currency (e.g., "$1,234.56")
+        - If it's a comparison or ranking, highlight the top performers
+        - If it's multiple rows, provide insights and mention the full data is available
         - Do NOT include the SQL query in your response
-        - Keep the response conversational and helpful`
+        - Keep the response conversational and helpful
+        - For single values, be direct and clear
+        - For multiple values, provide context and insights`
 
-        // Call BAML again with the results
-        const finalResponse = await b.SQLAssistant(
-            followUpMessage,
-            [], // No conversation history for this follow-up
-            "Generate final response based on query results"
-        )
+        // Instead of calling BAML again, create a simple, direct response based on the data
+        if (queryResult.data && Array.isArray(queryResult.data)) {
+            if (queryResult.data.length === 1) {
+                const row = queryResult.data[0]
+                const country = row.country || row.appName || row.platform || 'Unknown'
+                const revenue = row.total_revenue || row.revenue || row.inAppRevenue || row.adsRevenue || 0
 
-        return finalResponse.answer || initialResponse
+                // Format the response based on the question type
+                if (userQuestion.toLowerCase().includes('country') && userQuestion.toLowerCase().includes('revenue')) {
+                    return `The country generating the most revenue is ${country}, with a total revenue of $${revenue.toLocaleString()}.`
+                } else if (userQuestion.toLowerCase().includes('how many')) {
+                    return `You have ${revenue} ${country.toLowerCase()} apps.`
+                } else {
+                    return `Based on the data: ${country} has ${revenue.toLocaleString()}.`
+                }
+            } else {
+                // Multiple results - provide a summary
+                return `The query returned ${queryResult.data.length} results. The top performers are: ${queryResult.data.slice(0, 3).map((row: any) => {
+                    const name = row.country || row.appName || row.platform || 'Unknown'
+                    const value = row.total_revenue || row.revenue || row.installs || 0
+                    return `${name} (${value.toLocaleString()})`
+                }).join(', ')}.`
+            }
+        }
+
+        return `Based on the query results: ${resultsText}`
     } catch (error) {
         console.error('Error generating final response:', error)
         // Fallback to initial response if follow-up fails
@@ -265,35 +277,48 @@ async function generateFinalResponse(
 function shouldDisplayAsTable(question: string, hasToolCalls: boolean): boolean {
     const questionLower = question.toLowerCase()
 
-    // Simple questions that should show as text (no table)
+    // Simple questions that should show as text (no table) - single value responses
     const simpleQuestions = [
-        'how many apps do we have',
-        'how many android apps',
-        'how many ios apps',
+        'how many apps',
+        'how many android',
+        'how many ios',
         'what about ios',
-        'what about android'
+        'what about android',
+        'total revenue',
+        'total installs',
+        'total ua cost',
+        'average revenue',
+        'average installs',
+        'average ua cost'
     ]
 
-    // Complex questions that should show as table
+    // Complex questions that should show as table - multiple rows or detailed data
     const complexQuestions = [
-        'which country generates the most revenue',
-        'list all ios apps',
+        'which country',
+        'list all',
         'show me',
         'display',
         'compare',
         'ranking',
         'top',
         'bottom',
-        'biggest change',
-        'ua spend'
+        'highest',
+        'lowest',
+        'most',
+        'least',
+        'by country',
+        'by platform',
+        'performance',
+        'analysis',
+        'breakdown'
     ]
 
-    // Check for simple questions first
+    // Check for simple questions first (single value responses)
     if (simpleQuestions.some(simple => questionLower.includes(simple))) {
         return false
     }
 
-    // Check for complex questions
+    // Check for complex questions (multiple rows or detailed data)
     if (complexQuestions.some(complex => questionLower.includes(complex))) {
         return true
     }
@@ -404,6 +429,8 @@ export async function POST(request: NextRequest) {
         let sqlQuery: string | undefined = undefined
 
         console.log('Checking for tool calls in llmResponse:', llmResponse.toolCalls)
+        console.log('llmResponse.toolCalls type:', typeof llmResponse.toolCalls)
+        console.log('llmResponse.toolCalls length:', llmResponse.toolCalls?.length)
 
         if (llmResponse.toolCalls && llmResponse.toolCalls.length > 0) {
             console.log('Found tool calls, executing them...')
@@ -418,8 +445,10 @@ export async function POST(request: NextRequest) {
                 console.log('Tool args:', toolArgs)
 
                 if (toolName === 'execute_sql_query') {
-                    const sqlQueryText = toolArgs?.query || toolArgs?.sql_query
-                    const queryDescription = toolArgs?.query_description || 'User query'
+                    // Extract SQL query and description from the tool call
+                    const executeToolCall = toolCall as { sql_query?: string; query_description?: string;[key: string]: any }
+                    const sqlQueryText = executeToolCall.sql_query || toolArgs?.query || toolArgs?.sql_query
+                    const queryDescription = executeToolCall.query_description || toolArgs?.query_description || 'User query'
 
                     console.log('Executing SQL query:', sqlQueryText)
 
@@ -460,10 +489,14 @@ export async function POST(request: NextRequest) {
         }
 
         const response: ChatResponse = {
-            response: finalResponse,
+            response: queryResult !== null ? finalResponse : llmResponse.response,
             queryResult,
             sqlQuery,
-            shouldShowTable: llmResponse.shouldShowTable
+            shouldShowTable: llmResponse.shouldShowTable,
+            // Add flag to indicate if this was a two-step process
+            isTwoStepResponse: queryResult !== null,
+            // Add initial response for two-step process
+            initialResponse: queryResult !== null ? llmResponse.response : undefined
         }
 
         return NextResponse.json(response)

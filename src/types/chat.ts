@@ -28,6 +28,8 @@ export interface ChatResponse {
     }
     sqlQuery?: string
     shouldShowTable: boolean
+    isTwoStepResponse?: boolean
+    initialResponse?: string
 }
 
 export interface ToolCall {

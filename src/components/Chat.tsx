@@ -61,16 +61,43 @@ export default function Chat({ onQueryResult }: ChatProps) {
 
             const data: ChatResponse = await response.json()
 
-            const assistantMessage: SQLMessage = {
-                role: 'assistant',
-                content: data.response,
-                timestamp: new Date().toISOString()
-            }
+            if (data.isTwoStepResponse && data.queryResult) {
+                // Two-step process: Show initial response, then final response
+                
+                // Step 1: Show initial acknowledgment (the first response from LLM)
+                const initialMessage: SQLMessage = {
+                    role: 'assistant',
+                    content: data.initialResponse!, // Use the initial response
+                    timestamp: new Date().toISOString()
+                }
+                setMessages(prev => [...prev, initialMessage])
 
-            setMessages(prev => [...prev, assistantMessage])
+                // Step 2: Show "Thinking..." message
+                const thinkingMessage: SQLMessage = {
+                    role: 'assistant',
+                    content: 'Thinking...',
+                    timestamp: new Date().toISOString()
+                }
+                setMessages(prev => [...prev, thinkingMessage])
 
-            // Store query context for follow-ups
-            if (data.queryResult) {
+                // Step 3: Replace "Thinking..." with final response (the second response from LLM)
+                setTimeout(() => {
+                    setMessages(prev => {
+                        const newMessages = [...prev]
+                        // Replace the "Thinking..." message with the final response
+                        const thinkingIndex = newMessages.findIndex(msg => msg.content === 'Thinking...')
+                        if (thinkingIndex !== -1) {
+                            newMessages[thinkingIndex] = {
+                                role: 'assistant',
+                                content: data.response, // This is the final response from generateFinalResponse
+                                timestamp: new Date().toISOString()
+                            }
+                        }
+                        return newMessages
+                    })
+                }, 1000) // Small delay to show the thinking state
+
+                // Store query context for follow-ups
                 setLastQueryResult(data.queryResult)
                 setLastSqlQuery(data.sqlQuery || '')
                 
@@ -82,6 +109,30 @@ export default function Chat({ onQueryResult }: ChatProps) {
                         shouldShowTable: data.shouldShowTable,
                         sqlQuery: data.sqlQuery
                     })
+                }
+            } else {
+                // Single-step process: Show response directly
+                const assistantMessage: SQLMessage = {
+                    role: 'assistant',
+                    content: data.response,
+                    timestamp: new Date().toISOString()
+                }
+                setMessages(prev => [...prev, assistantMessage])
+
+                // Store query context for follow-ups
+                if (data.queryResult) {
+                    setLastQueryResult(data.queryResult)
+                    setLastSqlQuery(data.sqlQuery || '')
+                    
+                    // Notify parent component about query result
+                    if (onQueryResult) {
+                        onQueryResult({
+                            data: data.queryResult.data,
+                            rowCount: data.queryResult.rowCount,
+                            shouldShowTable: data.shouldShowTable,
+                            sqlQuery: data.sqlQuery
+                        })
+                    }
                 }
             }
         } catch (error) {
