@@ -37,16 +37,9 @@ const tools = {
     },
 
     async show_sql_query(args: { sql_query: string }) {
-        try {
-            return await SQLExecutor.getQueryStats()
-        } catch {
-            return {
-                totalApps: 0,
-                totalRevenue: 0,
-                totalInstalls: 0,
-                totalUaCost: 0
-            }
-        }
+        // This tool simply acknowledges that the LLM wants to show the SQL.
+        // The actual SQL to display comes from args.sql_query (or previously executed query).
+        return { show: true, sql_query: args.sql_query }
     }
 }
 
@@ -303,24 +296,6 @@ export async function POST(request: NextRequest) {
             })
         }
 
-        // Handle "show me the SQL" requests in natural language
-        if (message.toLowerCase().includes('show me the sql') ||
-            message.toLowerCase().includes('sql you used') ||
-            message.toLowerCase().includes('sql query')) {
-            if (body.lastSqlQuery) {
-                return NextResponse.json({
-                    response: `Here's the SQL query I used:\n\n\`\`\`sql\n${body.lastSqlQuery}\n\`\`\``,
-                    sqlQuery: body.lastSqlQuery,
-                    shouldShowTable: false
-                })
-            } else {
-                return NextResponse.json({
-                    response: "I haven't executed any SQL queries yet. Ask me a question about your app data first!",
-                    shouldShowTable: false
-                })
-            }
-        }
-
         // Check for off-topic questions
         const offTopicKeywords = ['weather', 'news', 'sports', 'politics', 'joke', 'funny', 'music', 'movie']
         const isOffTopic = offTopicKeywords.some(keyword =>
@@ -352,6 +327,7 @@ export async function POST(request: NextRequest) {
         let finalResponse = llmResponse.response
         let queryResult: any = null
         let sqlQuery: string | undefined = undefined
+        let responseModifiedByTools = false
 
         console.log('Checking for tool calls in llmResponse:', llmResponse.toolCalls)
         console.log('llmResponse.toolCalls type:', typeof llmResponse.toolCalls)
@@ -404,7 +380,17 @@ export async function POST(request: NextRequest) {
                         }
                     }
                 } else if (toolName === 'show_sql_query') {
-                    await tools.show_sql_query(toolArgs || {})
+                    // LLM explicitly asked to show the SQL query. Capture the intent and SQL to display.
+                    const showArgs = toolArgs || {}
+                    const acknowledged = await tools.show_sql_query(showArgs)
+                    // Prefer the sql passed by the tool call; fallback to the last executed one
+                    const sqlToShow = showArgs?.sql_query || sqlQuery || lastSqlQuery
+                    if (acknowledged && sqlToShow) {
+                        // Append SQL to the assistant response and ensure it's available to the UI
+                        finalResponse = `${finalResponse}\n\nHere is the SQL I used:\n\n\`\`\`sql\n${sqlToShow}\n\`\`\``
+                        sqlQuery = sqlToShow
+                        responseModifiedByTools = true
+                    }
                 }
             }
         } else {
@@ -412,7 +398,7 @@ export async function POST(request: NextRequest) {
         }
 
         const response: ChatResponse = {
-            response: queryResult !== null ? finalResponse : llmResponse.response,
+            response: (queryResult !== null || responseModifiedByTools) ? finalResponse : llmResponse.response,
             queryResult,
             sqlQuery,
             shouldShowTable: llmResponse.shouldShowTable,
