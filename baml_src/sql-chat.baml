@@ -53,6 +53,9 @@ class ResponseSQLChat {
     tool_calls (ExecuteSQLQuery | ShowSQLQuery | ExportCSV)[]? @description(#"
         Tool calls to execute SQL queries or get data.
     "#)
+    display_table bool? @description(#"
+        Whether the results should be displayed in a table format. True for multi-row or detailed outputs; false for simple single values.
+    "#)
 }
 
 function SQLAssistant(
@@ -95,6 +98,7 @@ function SQLAssistant(
         - Use the 'tool_calls' field to execute SQL queries
         - Do NOT put tool calls inside the answer text
         - Do NOT provide final answers with numbers - the SQL execution will provide the actual data
+        - Decide and set 'display_table': true when the expected/returned results are multi-row or detailed breakdowns; false when a single aggregate/number is sufficient
 
         {{ ctx.output_format }}
     "#

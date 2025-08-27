@@ -90,8 +90,7 @@ async function generateLLMResponse(
             toolCalls = bamlResponse.tool_calls
         }
 
-        // Determine if response should show as table or text based on question complexity
-        const shouldShowTable = shouldDisplayAsTable(userQuestion, toolCalls.length > 0)
+        const shouldShowTable = Boolean((bamlResponse as any).display_table)
 
         return {
             response,
@@ -154,65 +153,6 @@ Instructions:
         // Fallback to initial response if follow-up fails
         return initialResponse
     }
-}
-
-// Determine if response should be displayed as table or text
-function shouldDisplayAsTable(question: string, hasToolCalls: boolean): boolean {
-    const questionLower = question.toLowerCase()
-
-    // Simple questions that should show as text (no table) - single value responses
-    const simpleQuestions = [
-        'how many apps',
-        'how many android',
-        'how many ios',
-        'what about ios',
-        'what about android',
-        'total revenue',
-        'total installs',
-        'total ua cost',
-        'average revenue',
-        'average installs',
-        'average ua cost'
-    ]
-
-    // Complex questions that should show as table - multiple rows or detailed data
-    const complexQuestions = [
-        'which country',
-        'list all',
-        'show me',
-        'display',
-        'compare',
-        'ranking',
-        'top',
-        'bottom',
-        'highest',
-        'lowest',
-        'most',
-        'least',
-        'by country',
-        'by platform',
-        'performance',
-        'analysis',
-        'breakdown'
-    ]
-
-    // Check for simple questions first (single value responses)
-    if (simpleQuestions.some(simple => questionLower.includes(simple))) {
-        return false
-    }
-
-    // Check for complex questions (multiple rows or detailed data)
-    if (complexQuestions.some(complex => questionLower.includes(complex))) {
-        return true
-    }
-
-    // If it has tool calls and returns data, show as table
-    if (hasToolCalls) {
-        return true
-    }
-
-    // Default to text for simple responses
-    return false
 }
 
 // Generate CSV from query results
