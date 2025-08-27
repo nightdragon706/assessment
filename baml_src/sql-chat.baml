@@ -46,35 +46,11 @@ template_string SQLConversationHistory(messages: SQLMessage[]) #"
     {% endif %}
 "#
 
-class SQLQueryRequest {
-    user_question string @description(#"
-        The user's question or request in natural language.
-    "#)
-    context string? @description(#"
-        Optional context about what the user is trying to analyze.
-    "#)
-}
-
-class SQLQueryResponse {
-    sql_query string @description(#"
-        The generated SQL query.
-    "#)
-    explanation string @description(#"
-        Explanation of what the query does and why it answers the user's question.
-    "#)
-    expected_result string? @description(#"
-        Description of what the query result will show.
-    "#)
-    suggestions string[]? @description(#"
-        Suggested follow-up questions or analyses.
-    "#)
-}
-
 class ResponseSQLChat {
     answer string @stream.not_null @description(#"
         The assistant's response to the user's question.
     "#)
-    tool_calls (ExecuteSQLQuery | GetQueryTemplates | GetDatabaseStats)[]? @description(#"
+    tool_calls (ExecuteSQLQuery | ShowSQLQuery | ExportCSV)[]? @description(#"
         Tool calls to execute SQL queries or get data.
     "#)
 }
@@ -102,8 +78,8 @@ function SQLAssistant(
         
         Available tools:
         - execute_sql_query: Execute SQL queries against the database
-        - get_query_templates: Get query templates for common analytics
-        - get_database_stats: Get basic database statistics
+        - show_sql_query: Show the SQL query used to answer the user's question
+        - export_csv: Export the data from the SQL query to a CSV file
         
         For ANY question about data (apps, revenue, installs, platforms, countries):
         1. Generate the appropriate SQL query
@@ -122,37 +98,6 @@ function SQLAssistant(
     "#
 }
 
-function GenerateSQLQuery(request: SQLQueryRequest) -> SQLQueryResponse {
-    client CustomGPT41
-    prompt #"
-        {{ SQLAssistantPrompt() }}
-
-        User Question: {{ request.user_question }}
-        
-        {% if request.context %}
-        Context: {{ request.context }}
-        {% endif %}
-
-        Generate a SQL query that answers the user's question. The query should:
-        1. Be a SELECT statement only (for security)
-        2. Be well-formatted and readable
-        3. Include appropriate aliases for clarity
-        4. Use proper SQLite syntax and functions:
-           - Use strftime() for date functions instead of DATE_TRUNC()
-           - Use date() and datetime() functions for date operations
-           - Avoid PostgreSQL-specific functions like INTERVAL
-           - Use SQLite date arithmetic: date('now', '-1 month') instead of CURRENT_DATE - INTERVAL '1 month'
-           - IMPORTANT: Date fields are stored as milliseconds since epoch, so convert them: datetime(updatedAt/1000, 'unixepoch')
-           - For date filtering: strftime('%Y-%m', datetime(updatedAt/1000, 'unixepoch')) = strftime('%Y-%m', date('now'))
-        
-                 Available tables:
-         - apps: id, appName, platform, date, country, installs, inAppRevenue, adsRevenue, uaCost, createdAt, updatedAt
-         - queries: id, userId, appId, queryText, sqlGenerated, result, timestamp
-
-        {{ ctx.output_format }}
-    "#
-}
-
 test TestSQLAssistant {
     functions [SQLAssistant]
     args {
@@ -162,15 +107,5 @@ test TestSQLAssistant {
             {role "assistant", content "Hello! I'm here to help you analyze your app portfolio data. I can generate SQL queries to answer questions about revenue, downloads, performance, and more. What would you like to know?"}
         ]
         context "User wants to understand their app portfolio performance"
-    }
-}
-
-test TestGenerateSQLQuery {
-    functions [GenerateSQLQuery]
-    args {
-        request {
-            user_question "Show me the total revenue by platform"
-            context "User is analyzing platform performance"
-        }
     }
 }

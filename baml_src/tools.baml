@@ -10,17 +10,20 @@ class ExecuteSQLQuery {
     "#)
 }
 
-class GetQueryTemplates {
-    name "get_query_templates" @description(#"
-        Get available SQL query templates for common analytics tasks.
+class ShowSQLQuery {
+    name "show_sql_query" @description(#"
+        Show the SQL query used to answer the user's question to the user.
     "#)
-    category string? @description(#"
-        Optional category filter: 'revenue', 'downloads', 'performance', 'comparison', 'trends'
+    sql_query string @description(#"
+        The SQL query to show.
     "#)
 }
 
-class GetDatabaseStats {
-    name "get_database_stats" @description(#"
-        Get basic statistics about the app portfolio database.
+class ExportCSV {
+    name "export_csv" @description(#"
+        Export the data from the SQL query to a CSV file.
+    "#)
+    csv_file_name string @description(#"
+        The name of the CSV file to export.
     "#)
 }

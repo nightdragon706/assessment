@@ -1,5 +1,4 @@
 import { prisma } from './prisma'
-import { SQLTemplate, getTemplateById } from './sql-templates'
 
 export interface QueryResult {
     success: boolean
@@ -43,24 +42,6 @@ function convertBigIntsToNumbers(obj: any): any {
 }
 
 export class SQLExecutor {
-    /**
-     * Execute a SQL template by ID
-     */
-    static async executeTemplate(
-        templateId: string,
-        options: QueryExecutionOptions = {}
-    ): Promise<QueryResult> {
-        const template = getTemplateById(templateId)
-        if (!template) {
-            return {
-                success: false,
-                error: `Template with ID '${templateId}' not found`
-            }
-        }
-
-        return this.executeQuery(template.sql, options)
-    }
-
     /**
      * Execute a custom SQL query
      */

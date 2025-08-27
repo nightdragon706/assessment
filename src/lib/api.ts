@@ -43,22 +43,3 @@ export const appsApi = {
         if (!response.ok) throw new Error('Failed to delete app')
     },
 }
-
-// Metrics API
-export const metricsApi = {
-    getAll: async (): Promise<Metric[]> => {
-        const response = await fetch(`${API_BASE}/metrics`)
-        if (!response.ok) throw new Error('Failed to fetch metrics')
-        return response.json()
-    },
-
-    create: async (data: CreateMetricData): Promise<Metric> => {
-        const response = await fetch(`${API_BASE}/metrics`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        })
-        if (!response.ok) throw new Error('Failed to create metric')
-        return response.json()
-    },
-}

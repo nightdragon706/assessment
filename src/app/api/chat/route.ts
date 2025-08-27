@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SQLExecutor } from '@/lib/sql-executor'
-import { getAllTemplates, getTemplatesByCategory } from '@/lib/sql-templates'
 import { prisma } from '@/lib/prisma'
 import { ChatRequest, ChatResponse, SQLMessage } from '@/types/chat'
 import { b } from '@/app/baml_client'
@@ -37,18 +36,7 @@ const tools = {
         }
     },
 
-    async get_query_templates(args: { category?: string }) {
-        try {
-            if (args.category) {
-                return getTemplatesByCategory(args.category as 'revenue' | 'downloads' | 'performance' | 'comparison' | 'trends')
-            }
-            return getAllTemplates()
-        } catch {
-            return []
-        }
-    },
-
-    async get_database_stats() {
+    async show_sql_query(args: { sql_query: string }) {
         try {
             return await SQLExecutor.getQueryStats()
         } catch {
@@ -86,7 +74,7 @@ async function generateLLMResponse(
         // Add conversation context for follow-up questions
         if (conversationHistory.length > 1) {
             const lastMessage = conversationHistory[conversationHistory.length - 1]
-            if (lastMessage.role === 'assistant' && lastMessage.content.includes('apps')) {
+            if (lastMessage.role === 'assistant') {
                 context += '. This appears to be a follow-up question about apps.'
             }
         }
@@ -98,10 +86,6 @@ async function generateLLMResponse(
             context
         )
 
-        // Debug: Log the BAML response structure
-        console.log('BAML Response keys:', Object.keys(bamlResponse))
-        console.log('BAML Response:', JSON.stringify(bamlResponse, null, 2))
-
         // Extract the response
         const response = bamlResponse.answer || "I'm here to help you analyze your app portfolio data!"
 
@@ -111,69 +95,10 @@ async function generateLLMResponse(
         // Check if tool_calls exists in the response
         if (bamlResponse.tool_calls && Array.isArray(bamlResponse.tool_calls)) {
             toolCalls = bamlResponse.tool_calls
-            console.log('Found tool_calls in response:', toolCalls)
-        }
-
-        // Also check for tool calls in the raw response (since TypeBuilder is only for tests)
-        // The LLM might include tool calls in the answer field as JSON
-        if (!toolCalls.length && bamlResponse.answer) {
-            try {
-                // Look for JSON-like content in the answer
-                const answerText = bamlResponse.answer
-                console.log('Checking answer text for tool calls:', answerText)
-
-                // Check if the entire answer is JSON
-                if (answerText.trim().startsWith('{') && answerText.trim().endsWith('}')) {
-                    try {
-                        const parsed = JSON.parse(answerText)
-                        console.log('Parsed entire answer as JSON:', parsed)
-                        if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
-                            toolCalls = parsed.tool_calls
-                            console.log('Found tool_calls in entire answer JSON:', toolCalls)
-                        }
-                    } catch (e) {
-                        console.log('Could not parse entire answer as JSON')
-                    }
-                }
-
-                // Also check for embedded JSON
-                if (!toolCalls.length && (answerText.includes('tool_calls') || answerText.includes('"tool"'))) {
-                    // Try to extract JSON from the answer
-                    const jsonMatch = answerText.match(/\{[\s\S]*\}/)
-                    if (jsonMatch) {
-                        const parsed = JSON.parse(jsonMatch[0])
-                        console.log('Parsed JSON from answer:', parsed)
-                        if (parsed.tool_calls && Array.isArray(parsed.tool_calls)) {
-                            toolCalls = parsed.tool_calls
-                            console.log('Found tool_calls in parsed JSON:', toolCalls)
-                        }
-                    }
-                }
-            } catch (error) {
-                console.log('Could not parse tool calls from answer:', error)
-            }
-        }
-
-        console.log('Final toolCalls extracted:', toolCalls)
-        console.log('Tool calls length:', toolCalls.length)
-        console.log('Tool calls type:', typeof toolCalls)
-
-        // If no tool calls found, log it for debugging
-        if (toolCalls.length === 0) {
-            const isDataQuestion = /(how many|count|total|revenue|installs|apps|platform|country|which|what|list|show|display|top|bottom|highest|lowest|average|sum|most|least)/i.test(userQuestion)
-            if (isDataQuestion) {
-                console.log('WARNING: No tool calls found for data question:', userQuestion)
-                console.log('This should not happen - the LLM should generate execute_sql_query tool calls')
-            }
         }
 
         // Determine if response should show as table or text based on question complexity
         const shouldShowTable = shouldDisplayAsTable(userQuestion, toolCalls.length > 0)
-
-        console.log('About to return from generateLLMResponse:')
-        console.log('- toolCalls:', toolCalls)
-        console.log('- toolCalls.length:', toolCalls.length)
-        console.log('- toolCalls.length > 0:', toolCalls.length > 0)
 
         return {
             response,
@@ -478,10 +403,8 @@ export async function POST(request: NextRequest) {
                             }
                         }
                     }
-                } else if (toolName === 'get_query_templates') {
-                    await tools.get_query_templates(toolArgs || {})
-                } else if (toolName === 'get_database_stats') {
-                    await tools.get_database_stats()
+                } else if (toolName === 'show_sql_query') {
+                    await tools.show_sql_query(toolArgs || {})
                 }
             }
         } else {
