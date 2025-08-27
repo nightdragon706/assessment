@@ -261,18 +261,7 @@ export async function POST(request: NextRequest) {
             })
         }
 
-        // Check for off-topic questions
-        const offTopicKeywords = ['weather', 'news', 'sports', 'politics', 'joke', 'funny', 'music', 'movie']
-        const isOffTopic = offTopicKeywords.some(keyword =>
-            message.toLowerCase().includes(keyword)
-        )
-
-        if (isOffTopic) {
-            return NextResponse.json({
-                response: "I'm focused on helping you with app portfolio analytics. I can help you analyze revenue, installs, platform performance, and other app metrics. What would you like to know about your apps?",
-                shouldShowTable: false
-            })
-        }
+        // Let the LLM handle off-topic detection and decide response/tool usage.
 
         // Get last query context for follow-ups
         const lastQuery = conversationHistory.length > 0 ?

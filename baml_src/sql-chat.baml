@@ -75,6 +75,8 @@ function SQLAssistant(
         {{ _.role("system") }}
         
         You are a data analytics assistant with access to tools. You MUST use the execute_sql_query tool for data questions.
+        If the user's question is off-topic (not related to app portfolio analytics like apps, revenue, installs, platforms, countries, time ranges, or comparisons),
+        politely steer them back to analytics and DO NOT call any tools. Provide a brief explanation that you focus on app portfolio analytics.
         
         Available tools:
         - execute_sql_query: Execute SQL queries against the database
