@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { SQLMessage } from '@/types/chat'
 
 async function postToSlack(channel: string, text: string) {
     const token = process.env.SLACK_BOT_TOKEN
@@ -8,6 +9,29 @@ async function postToSlack(channel: string, text: string) {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ channel, text })
     })
+}
+
+// Simple in-memory history per channel (ephemeral; resets on redeploy)
+type SlackChannelState = {
+    history: SQLMessage[]
+    lastQueryResult?: {
+        data: any[]
+        rowCount: number
+        executionTime: number
+    }
+    lastSqlQuery?: string
+}
+
+const slackChannelState = new Map<string, SlackChannelState>()
+const MAX_HISTORY = 20
+
+function getStateForChannel(channel: string): SlackChannelState {
+    return slackChannelState.get(channel) || { history: [] }
+}
+
+function setStateForChannel(channel: string, state: SlackChannelState) {
+    const trimmedHistory = state.history.slice(-MAX_HISTORY)
+    slackChannelState.set(channel, { ...state, history: trimmedHistory })
 }
 
 export async function POST(request: NextRequest) {
@@ -42,6 +66,22 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ ok: true })
             }
 
+            // Restrict to a single channel if configured
+            const allowedChannel = process.env.SLACK_CHANNEL_ID
+            if (allowedChannel && channel !== allowedChannel) {
+                return NextResponse.json({ ok: true })
+            }
+
+            // Build conversation state for this channel
+            const existingState = getStateForChannel(channel)
+            const existingHistory = existingState.history
+            const userMsg: SQLMessage = {
+                role: 'user',
+                content: text,
+                timestamp: new Date().toISOString()
+            }
+            const historyToSend = [...existingHistory, userMsg]
+
             // Forward to chat API
             const base = process.env.APP_BASE_URL || 'http://localhost:3000'
             const chatRes = await fetch(`${base}/api/chat`, {
@@ -49,7 +89,9 @@ export async function POST(request: NextRequest) {
                 headers: { 'Content-Type': 'application/json', 'x-origin': 'slack' },
                 body: JSON.stringify({
                     message: text,
-                    conversationHistory: [],
+                    conversationHistory: historyToSend,
+                    lastQueryResult: existingState.lastQueryResult,
+                    lastSqlQuery: existingState.lastSqlQuery,
                     requestType: 'query'
                 })
             })
@@ -57,8 +99,20 @@ export async function POST(request: NextRequest) {
             const chat = await chatRes.json().catch(() => null)
             const answer = chat?.response || "Sorry, I couldn't process that."
 
-            // Post answer back into the same channel
+            // Post answer back into the same Slack channel
             await postToSlack(channel, answer)
+
+            // Update conversation history with assistant reply
+            const assistantMsg: SQLMessage = {
+                role: 'assistant',
+                content: answer,
+                timestamp: new Date().toISOString()
+            }
+            setStateForChannel(channel, {
+                history: [...historyToSend, assistantMsg],
+                lastQueryResult: chat?.queryResult,
+                lastSqlQuery: chat?.sqlQuery
+            })
 
             return NextResponse.json({ ok: true })
         }
