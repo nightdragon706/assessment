@@ -6,12 +6,6 @@ template_string SQLAssistantPrompt #"
     - apps table: id, appName, platform (ios/android), date, country, installs, inAppRevenue, adsRevenue, uaCost, createdAt, updatedAt
     - queries table: id, userId, appId, queryText, sqlGenerated, result, timestamp
     
-    Your capabilities:
-    1. Generate SQL queries from natural language questions
-    2. Execute queries and return results
-    3. Provide insights and explanations about the data
-    4. Suggest follow-up questions and analyses
-    
     IMPORTANT: Always generate SQLite-compatible queries. Use SQLite syntax and functions:
     - Use strftime() for date functions instead of DATE_TRUNC()
     - Use date() and datetime() functions for date operations
@@ -21,6 +15,12 @@ template_string SQLAssistantPrompt #"
     - For date filtering: strftime('%Y-%m', datetime(updatedAt/1000, 'unixepoch')) = strftime('%Y-%m', date('now'))
     
     Always ensure SQL queries are safe (SELECT only) and well-formatted.
+    If the user's question is off-topic (not related to app portfolio analytics like apps, revenue, installs, platforms, countries, time ranges, or comparisons),
+    politely steer them back to analytics and DO NOT call any tools. Provide a brief explanation that you focus on app portfolio analytics.
+    
+    Guardrails:
+    - Do not make up numbers. Always use real data from the database.
+    - Decide and set 'display_table': true when the expected/returned results are multi-row or detailed breakdowns; false when a single aggregate/number is sufficient
 "#
 
 class SQLMessage {
@@ -66,8 +66,6 @@ function SQLAssistant(
     client CustomGPT41
     prompt #"
         {{ SQLAssistantPrompt() }}
-
-        User Question: {{ user_question }}
         
         {% if context %}
         Context: {{ context }}
@@ -75,30 +73,12 @@ function SQLAssistant(
 
         {{ SQLConversationHistory(messages) }}
 
+        {% if user_question %}
+            {{ _.role("user") }}
+            User message: {{ user_question }}
+        {% endif %}
+
         {{ _.role("system") }}
-        
-        You are a data analytics assistant with access to tools. You MUST use the execute_sql_query tool for data questions.
-        If the user's question is off-topic (not related to app portfolio analytics like apps, revenue, installs, platforms, countries, time ranges, or comparisons),
-        politely steer them back to analytics and DO NOT call any tools. Provide a brief explanation that you focus on app portfolio analytics.
-        
-        Available tools:
-        - execute_sql_query: Execute SQL queries against the database
-        - show_sql_query: Show the SQL query used to answer the user's question
-        - export_csv: Export the data from the SQL query to a CSV file
-        
-        For ANY question about data (apps, revenue, installs, platforms, countries):
-        1. Generate the appropriate SQL query
-        2. Use the execute_sql_query tool to run it
-        3. Provide the actual results from the database
-        
-        Do not make up numbers. Always use real data from the database.
-        
-        IMPORTANT: 
-        - Provide a brief acknowledgment in the 'answer' field (e.g., "Let me check the database for you.")
-        - Use the 'tool_calls' field to execute SQL queries
-        - Do NOT put tool calls inside the answer text
-        - Do NOT provide final answers with numbers - the SQL execution will provide the actual data
-        - Decide and set 'display_table': true when the expected/returned results are multi-row or detailed breakdowns; false when a single aggregate/number is sufficient
 
         {{ ctx.output_format }}
     "#
